@@ -128,6 +128,8 @@ data class Forecast(
     val heightUnit: String,
     val model: ForecastModel,
     val fetchedAt: Long,
+    /** False when the chosen model has nothing for this spot (e.g. the US-only Blend abroad) and best match stood in. */
+    val modelCoversHere: Boolean = true,
 ) {
     /** Hours from the current one on. */
     fun upcoming(): List<Hour> {
@@ -172,11 +174,10 @@ object OpenMeteo {
         sb.append("&wind_speed_unit=").append(s.wind.api)
         sb.append("&precipitation_unit=").append(s.precip.api)
         sb.append("&timezone=auto&forecast_days=10")
-        if (model == ForecastModel.Best) {
-            sb.append("&minutely_15=precipitation&forecast_minutely_15=12&past_minutely_15=1")
-        } else {
-            sb.append("&models=").append(model.api)
-        }
+        sb.append("&minutely_15=precipitation&forecast_minutely_15=12&past_minutely_15=1")
+        // A chosen model comes with "best match" alongside: wherever the chosen model has no value (outside its
+        // area, or past its range) the parser takes best match's instead.
+        if (model != ForecastModel.Best) sb.append("&models=").append(model.api).append(",best_match")
         return sb.toString()
     }
 
@@ -188,6 +189,20 @@ object OpenMeteo {
     fun parse(body: String, model: ForecastModel = ForecastModel.Best, fetchedAt: Long = System.currentTimeMillis()): Forecast {
         val o = JSONObject(body)
         if (o.optBoolean("error")) throw IllegalStateException(o.optString("reason", "Forecast unavailable"))
+        // With several models, Open-Meteo suffixes each variable with the model's name; take them in priority order.
+        val pri = if (model == ForecastModel.Best) emptyList() else listOf(model.api, "best_match")
+        fun JSONObject.v(key: String): Double {
+            for (m in pri) num("${key}_$m").let { if (!it.isNaN()) return it }
+            return num(key)
+        }
+        fun JSONObject.v(key: String, i: Int): Double {
+            for (m in pri) at("${key}_$m", i).let { if (!it.isNaN()) return it }
+            return at(key, i)
+        }
+        fun JSONObject.s(key: String, i: Int): String? {
+            for (m in pri) optJSONArray("${key}_$m")?.let { a -> if (i < a.length() && !a.isNull(i)) return a.optString(i) }
+            return optJSONArray(key)?.let { a -> if (i < a.length() && !a.isNull(i)) a.optString(i) else null }
+        }
         val offset = o.optInt("utc_offset_seconds")
         val zone = ZoneOffset.ofTotalSeconds(offset)
         fun epoch(t: String): Long = runCatching { LocalDateTime.parse(t).toEpochSecond(zone) }.getOrDefault(0L)
@@ -195,21 +210,21 @@ object OpenMeteo {
         val c = o.getJSONObject("current")
         val current = Current(
             time = epoch(c.optString("time")),
-            temp = c.num("temperature_2m"),
-            feelsLike = c.num("apparent_temperature"),
-            humidity = c.num("relative_humidity_2m"),
-            dewPoint = c.num("dew_point_2m"),
-            isDay = c.optInt("is_day", 1) == 1,
-            precip = c.num("precipitation"),
-            code = c.optInt("weather_code", 3),
-            cloudCover = c.num("cloud_cover"),
-            pressure = c.num("pressure_msl"),
-            windSpeed = c.num("wind_speed_10m"),
-            windDir = c.num("wind_direction_10m"),
-            windGust = c.num("wind_gusts_10m"),
-            visibility = c.num("visibility"),
-            uv = c.num("uv_index"),
-            cape = c.num("cape"),
+            temp = c.v("temperature_2m"),
+            feelsLike = c.v("apparent_temperature"),
+            humidity = c.v("relative_humidity_2m"),
+            dewPoint = c.v("dew_point_2m"),
+            isDay = c.v("is_day").let { it.isNaN() || it >= 0.5 },
+            precip = c.v("precipitation"),
+            code = c.v("weather_code").let { if (it.isNaN()) 3 else it.toInt() },
+            cloudCover = c.v("cloud_cover"),
+            pressure = c.v("pressure_msl"),
+            windSpeed = c.v("wind_speed_10m"),
+            windDir = c.v("wind_direction_10m"),
+            windGust = c.v("wind_gusts_10m"),
+            visibility = c.v("visibility"),
+            uv = c.v("uv_index"),
+            cape = c.v("cape"),
         )
 
         val h = o.getJSONObject("hourly")
@@ -217,24 +232,24 @@ object OpenMeteo {
         val hourly = (0 until ht.length()).map { i ->
             Hour(
                 time = epoch(ht.getString(i)),
-                temp = h.at("temperature_2m", i),
-                feelsLike = h.at("apparent_temperature", i),
-                precipChance = h.at("precipitation_probability", i),
-                precip = h.at("precipitation", i),
-                snowfall = h.at("snowfall", i),
-                code = h.at("weather_code", i).let { if (it.isNaN()) 3 else it.toInt() },
-                windSpeed = h.at("wind_speed_10m", i),
-                windDir = h.at("wind_direction_10m", i),
-                windGust = h.at("wind_gusts_10m", i),
-                dewPoint = h.at("dew_point_2m", i),
-                humidity = h.at("relative_humidity_2m", i),
-                cape = h.at("cape", i),
-                visibility = h.at("visibility", i),
-                cloudCover = h.at("cloud_cover", i),
-                pressure = h.at("pressure_msl", i),
-                uv = h.at("uv_index", i),
-                isDay = h.at("is_day", i).let { it.isNaN() || it >= 0.5 },
-                freezingLevel = h.at("freezing_level_height", i),
+                temp = h.v("temperature_2m", i),
+                feelsLike = h.v("apparent_temperature", i),
+                precipChance = h.v("precipitation_probability", i),
+                precip = h.v("precipitation", i),
+                snowfall = h.v("snowfall", i),
+                code = h.v("weather_code", i).let { if (it.isNaN()) 3 else it.toInt() },
+                windSpeed = h.v("wind_speed_10m", i),
+                windDir = h.v("wind_direction_10m", i),
+                windGust = h.v("wind_gusts_10m", i),
+                dewPoint = h.v("dew_point_2m", i),
+                humidity = h.v("relative_humidity_2m", i),
+                cape = h.v("cape", i),
+                visibility = h.v("visibility", i),
+                cloudCover = h.v("cloud_cover", i),
+                pressure = h.v("pressure_msl", i),
+                uv = h.v("uv_index", i),
+                isDay = h.v("is_day", i).let { it.isNaN() || it >= 0.5 },
+                freezingLevel = h.v("freezing_level_height", i),
             )
         }.filter { !it.temp.isNaN() }
 
@@ -245,27 +260,32 @@ object OpenMeteo {
             Day(
                 date = date,
                 time = date.atStartOfDay().toEpochSecond(zone),
-                code = d.at("weather_code", i).let { if (it.isNaN()) 3 else it.toInt() },
-                high = d.at("temperature_2m_max", i),
-                low = d.at("temperature_2m_min", i),
-                precip = d.at("precipitation_sum", i),
-                snowfall = d.at("snowfall_sum", i),
-                precipChance = d.at("precipitation_probability_max", i),
-                windMax = d.at("wind_speed_10m_max", i),
-                gustMax = d.at("wind_gusts_10m_max", i),
-                windDir = d.at("wind_direction_10m_dominant", i),
-                sunrise = d.optJSONArray("sunrise")?.optString(i)?.let { epoch(it) } ?: 0L,
-                sunset = d.optJSONArray("sunset")?.optString(i)?.let { epoch(it) } ?: 0L,
-                uvMax = d.at("uv_index_max", i),
+                code = d.v("weather_code", i).let { if (it.isNaN()) 3 else it.toInt() },
+                high = d.v("temperature_2m_max", i),
+                low = d.v("temperature_2m_min", i),
+                precip = d.v("precipitation_sum", i),
+                snowfall = d.v("snowfall_sum", i),
+                precipChance = d.v("precipitation_probability_max", i),
+                windMax = d.v("wind_speed_10m_max", i),
+                gustMax = d.v("wind_gusts_10m_max", i),
+                windDir = d.v("wind_direction_10m_dominant", i),
+                sunrise = d.s("sunrise", i)?.let { epoch(it) } ?: 0L,
+                sunset = d.s("sunset", i)?.let { epoch(it) } ?: 0L,
+                uvMax = d.v("uv_index_max", i),
             )
         }.filter { !it.high.isNaN() }
 
         val minutely = o.optJSONObject("minutely_15")?.let { m ->
             val mt = m.optJSONArray("time") ?: JSONArray()
-            (0 until mt.length()).map { i -> Minute15(epoch(mt.getString(i)), m.at("precipitation", i)) }
+            // For the next-two-hours nowcast, best match's true 15-minute data beats an hourly model's interpolation.
+            (0 until mt.length()).map { i ->
+                val bm = m.at("precipitation_best_match", i)
+                Minute15(epoch(mt.getString(i)), if (!bm.isNaN()) bm else m.v("precipitation", i))
+            }
                 .filter { !it.precip.isNaN() }
         } ?: emptyList()
 
+        val primaryNow = pri.isEmpty() || !c.num("temperature_2m_" + pri[0]).isNaN()
         val units = o.optJSONObject("hourly_units")
         return Forecast(
             lat = o.optDouble("latitude"),
@@ -276,8 +296,9 @@ object OpenMeteo {
             hourly = hourly,
             daily = daily,
             minutely = minutely,
-            visibilityUnit = units?.optString("visibility", "m") ?: "m",
-            heightUnit = units?.optString("freezing_level_height", "m") ?: "m",
+            visibilityUnit = units?.let { u -> (pri.map { "visibility_$it" } + "visibility").firstNotNullOfOrNull { k -> u.optString(k).takeIf { it.isNotBlank() } } } ?: "m",
+            heightUnit = units?.let { u -> (pri.map { "freezing_level_height_$it" } + "freezing_level_height").firstNotNullOfOrNull { k -> u.optString(k).takeIf { it.isNotBlank() } } } ?: "m",
+            modelCoversHere = primaryNow,
             model = model,
             fetchedAt = fetchedAt,
         )

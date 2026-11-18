@@ -18,7 +18,10 @@ no ads: every source is free public data.
 **Forecast**
 - Current conditions with feels-like, dew point, pressure trend, visibility, UV, instability (CAPE), freezing level.
 - 15-minute "rain starting in…" nowcast, 48-hour chart, 10-day outlook.
-- Switch forecast model: best match, NOAA HRRR / GFS, ECMWF, ICON, GEM, UK Met Office, JMA, Météo-France.
+- Default forecast: NOAA's **National Blend of Models**, the calibrated multi-model blend the National Weather Service
+  starts its own forecasts from. Anywhere or any hour it doesn't cover (outside the US, past its range) is filled in from
+  Open-Meteo's best match automatically.
+- Switch forecast model: National Blend, best match, NOAA HRRR / GFS, ECMWF, ICON, GEM, UK Met Office, JMA, Météo-France.
 - NWS alerts, the local office's text forecast and the forecasters' Area Forecast Discussion (US).
 
 **Tropics**

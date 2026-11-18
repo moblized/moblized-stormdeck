@@ -62,7 +62,20 @@ class LiveSourcesTest {
         val s = AppSettings()
 
         check("Open-Meteo best match") { OpenMeteo.parse(textRetry(OpenMeteo.url(40.71, -74.0, s))).let { "now ${it.current.temp}°F, ${it.hourly.size} h, ${it.daily.size} d, ${it.minutely.size} x15min, cape ${it.current.cape}, vis ${it.current.visibility}${it.visibilityUnit}" } }
-        for (m in ForecastModel.entries.filter { it != ForecastModel.Best }) {
+        check("Open-Meteo National Blend (NYC)") {
+            val body = textRetry(OpenMeteo.url(40.71, -74.0, s, ForecastModel.Nbm))
+            val o = org.json.JSONObject(body)
+            val nbmKeys = o.getJSONObject("hourly").keys().asSequence().filter { it.endsWith("_ncep_nbm_conus") }.toList()
+            val f = OpenMeteo.parse(body, ForecastModel.Nbm)
+            val nbmHours = o.getJSONObject("hourly").optJSONArray("temperature_2m_ncep_nbm_conus")?.let { a -> (0 until a.length()).count { !a.isNull(it) } }
+            check(f.modelCoversHere) { "Blend has no current temperature for NYC" }
+            "covers=${f.modelCoversHere}, now ${f.current.temp}, Blend hours $nbmHours of ${f.hourly.size}, Blend vars ${nbmKeys.map { it.removeSuffix("_ncep_nbm_conus") }}, ${f.minutely.size} x15min"
+        }
+        check("Open-Meteo National Blend outside US (London)") {
+            val f = OpenMeteo.parse(textRetry(OpenMeteo.url(51.5, -0.12, s, ForecastModel.Nbm)), ForecastModel.Nbm)
+            "covers=${f.modelCoversHere}, now ${f.current.temp}, ${f.hourly.size} h, ${f.daily.size} d"
+        }
+        for (m in ForecastModel.entries.filter { it != ForecastModel.Best && it != ForecastModel.Nbm }) {
             check("Open-Meteo ${m.api}") { OpenMeteo.parse(textRetry(OpenMeteo.url(40.71, -74.0, s, m)), m).let { "${it.hourly.size} h, ${it.daily.size} d, now ${it.current.temp}" } }
         }
         check("Geocoding") { PlaceSearch.search("Tulsa").joinToString { it.name + "/" + it.region }.take(120) }

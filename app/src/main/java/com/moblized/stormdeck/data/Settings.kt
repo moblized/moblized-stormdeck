@@ -35,6 +35,7 @@ enum class NewStormScope(val label: String) {
 
 /** Forecast models from Open-Meteo. "best_match" blends the best local models for your spot. */
 enum class ForecastModel(val api: String, val label: String) {
+    Nbm("ncep_nbm_conus", "NOAA National Blend (US)"),
     Best("best_match", "Best match (auto)"),
     Hrrr("gfs_hrrr", "NOAA HRRR (US, 3 km, 48 h)"),
     Gfs("gfs_seamless", "NOAA GFS"),
@@ -51,7 +52,7 @@ data class AppSettings(
     val temp: TempUnit = TempUnit.F,
     val wind: WindUnit = WindUnit.Mph,
     val precip: PrecipUnit = PrecipUnit.In,
-    val model: ForecastModel = ForecastModel.Best,
+    val model: ForecastModel = ForecastModel.Nbm,
     val alerts: AlertLevel = AlertLevel.Warnings,
     val newStorms: NewStormScope = NewStormScope.Atlantic,
     val stormNearby: Boolean = true,
@@ -87,7 +88,8 @@ class SettingsStore(context: Context) {
             temp = enumOf("temp", d.temp),
             wind = enumOf("wind", d.wind),
             precip = enumOf("precip", d.precip),
-            model = enumOf("model", d.model),
+            // The National Blend became the default after the first release; move everyone onto it once.
+            model = if (prefs.getBoolean("nbmDefault", false)) enumOf("model", d.model) else d.model,
             alerts = enumOf("alerts", d.alerts),
             newStorms = enumOf("newStorms", d.newStorms),
             stormNearby = prefs.getBoolean("stormNearby", d.stormNearby),
@@ -108,6 +110,7 @@ class SettingsStore(context: Context) {
             .putString("wind", s.wind.name)
             .putString("precip", s.precip.name)
             .putString("model", s.model.name)
+            .putBoolean("nbmDefault", true)
             .putString("alerts", s.alerts.name)
             .putString("newStorms", s.newStorms.name)
             .putBoolean("stormNearby", s.stormNearby)

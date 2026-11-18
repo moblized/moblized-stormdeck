@@ -47,9 +47,66 @@ class ParsersTest {
         assertTrue(u.contains("latitude=40.7128&longitude=-74.0060"))
         assertTrue(u.contains("temperature_unit=fahrenheit"))
         assertTrue(u.contains("minutely_15=precipitation"))
+        // The National Blend is the default, with best match alongside to fill gaps.
+        assertEquals(ForecastModel.Nbm, AppSettings().model)
+        assertTrue(u, u.contains("&models=ncep_nbm_conus,best_match"))
         val m = OpenMeteo.url(40.0, -74.0, AppSettings(model = ForecastModel.Hrrr))
-        assertTrue(m.contains("&models=gfs_hrrr"))
-        assertFalse(m.contains("minutely_15"))
+        assertTrue(m.contains("&models=gfs_hrrr,best_match"))
+        val b = OpenMeteo.url(40.0, -74.0, AppSettings(model = ForecastModel.Best))
+        assertFalse(b.contains("&models="))
+    }
+
+    /** Turns the single-model sample into a two-model answer: the Blend (+1°, ending after 24 h) and best match. */
+    private fun twoModels(nbmCovers: Boolean): String {
+        val o = org.json.JSONObject(Samples.openMeteo())
+        for (block in listOf("current", "hourly", "daily", "minutely_15")) {
+            val b = o.getJSONObject(block)
+            for (k in b.keys().asSequence().toList()) {
+                if (k == "time" || k == "interval") continue
+                val v = b.get(k)
+                b.remove(k)
+                b.put(k + "_best_match", v)
+                val nbm: Any = when {
+                    !nbmCovers -> if (v is org.json.JSONArray) org.json.JSONArray().apply { repeat(v.length()) { put(org.json.JSONObject.NULL) } } else org.json.JSONObject.NULL
+                    k == "temperature_2m" && v is Number -> v.toDouble() + 1
+                    k == "temperature_2m" && v is org.json.JSONArray -> org.json.JSONArray().apply {
+                        for (i in 0 until v.length()) put(if (i < 24) v.getDouble(i) + 1 else org.json.JSONObject.NULL)
+                    }
+                    k == "uv_index" -> org.json.JSONObject.NULL
+                    else -> v
+                }
+                b.put(k + "_ncep_nbm_conus", nbm)
+            }
+        }
+        return o.toString()
+    }
+
+    @Test
+    fun openMeteoTwoModels() {
+        val single = OpenMeteo.parse(Samples.openMeteo())
+        val f = OpenMeteo.parse(twoModels(nbmCovers = true), ForecastModel.Nbm)
+        assertTrue(f.modelCoversHere)
+        assertEquals(single.current.temp + 1, f.current.temp, 0.001)
+        // The Blend's value where it has one, best match's after it runs out.
+        assertEquals(single.hourly[0].temp + 1, f.hourly[0].temp, 0.001)
+        assertEquals(single.hourly[30].temp, f.hourly[30].temp, 0.001)
+        assertEquals(single.hourly.size, f.hourly.size)
+        // A variable the Blend lacks comes from best match.
+        assertEquals(single.current.uv, f.current.uv, 0.001)
+        assertEquals(single.daily.size, f.daily.size)
+        assertEquals(single.daily[0].sunrise, f.daily[0].sunrise)
+        assertEquals("Precipitation starting in about 30 min", f.nowcast())
+        assertEquals("ft", f.visibilityUnit)
+    }
+
+    @Test
+    fun openMeteoBlendOutsideUs() {
+        val single = OpenMeteo.parse(Samples.openMeteo())
+        val f = OpenMeteo.parse(twoModels(nbmCovers = false), ForecastModel.Nbm)
+        assertFalse(f.modelCoversHere)
+        assertEquals(single.current.temp, f.current.temp, 0.001)
+        assertEquals(single.hourly.size, f.hourly.size)
+        assertEquals(single.daily[3].high, f.daily[3].high, 0.001)
     }
 
     @Test

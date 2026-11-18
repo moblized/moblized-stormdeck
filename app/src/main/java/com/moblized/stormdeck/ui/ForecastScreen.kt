@@ -160,7 +160,11 @@ fun ForecastContent(
         nws?.discussion?.let { afd -> item { Discussion(afd) } }
         item {
             Text(
-                "Forecast: Open-Meteo (${f.model.label}). Alerts, text forecast and discussion: NOAA National Weather Service.",
+                when {
+                    f.model == ForecastModel.Best -> "Forecast: Open-Meteo best match."
+                    f.modelCoversHere -> "Forecast: ${f.model.label} via Open-Meteo; best match fills any hours it doesn't cover."
+                    else -> "${f.model.label} doesn't cover this place, so this is Open-Meteo best match."
+                } + " Alerts, text forecast and discussion: NOAA National Weather Service.",
                 style = MaterialTheme.typography.labelSmall,
                 color = LocalStorm.current.dim,
             )
