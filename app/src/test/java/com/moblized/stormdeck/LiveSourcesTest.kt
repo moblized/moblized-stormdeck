@@ -94,6 +94,16 @@ class LiveSourcesTest {
             }
             check("GIBS $layer @$geo") { image(Gibs.wms(layer, geo).replace("{bbox-epsg-3857}", box)) }
         }
+        // GeoColor: how far behind real time is it, and does it have a night side?
+        for (back in listOf(60, 90, 120, 180, 240, 360, 1080)) {
+            val t = Gibs.latestGeoTime(System.currentTimeMillis() - (back - 50) * 60_000L)
+            check("GeoColor probe -${back}min @$t") {
+                "east " + image(Gibs.wms("GOES-East_ABI_GeoColor", t).replace("{bbox-epsg-3857}", bboxUs)) +
+                    " / atlantic " + image(Gibs.wms("GOES-East_ABI_GeoColor", t).replace("{bbox-epsg-3857}", "-7514065,1252344,-5009377,3757033"))
+            }
+        }
+        check("GeoColor probe no TIME") { image(Gibs.wms("GOES-East_ABI_GeoColor", "x").replace("&TIME=x", "").replace("{bbox-epsg-3857}", bboxUs)) }
+
         check("GIBS SST anomaly map tiles @${Gibs.sstDate()}") { image(Gibs.wms(Gibs.SST_ANOMALY, Gibs.sstDate()).replace("{bbox-epsg-3857}", bboxPacific)) }
         check("GIBS SST anomaly picture") { image(Gibs.sstImage(-180.0, -30.0, -80.0, 30.0, 600, 360)) }
         check("NWS warnings layer") { image(NwsWarningsLayer.url().replace("{bbox-epsg-3857}", bboxUs)) }
