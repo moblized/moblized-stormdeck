@@ -220,7 +220,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         refreshFrames()
     }
 
-    fun setSatellite(m: SatelliteMode) {
+    fun chooseSatellite(m: SatelliteMode) {
         satellite = m
         radarPrefs.edit().putString("sat", m.name).apply()
     }

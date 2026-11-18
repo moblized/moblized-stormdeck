@@ -417,7 +417,7 @@ private fun LayersSheet(vm: AppViewModel) {
             options.forEachIndexed { i, m ->
                 SegmentedButton(
                     selected = vm.satellite == m,
-                    onClick = { vm.setSatellite(m) },
+                    onClick = { vm.chooseSatellite(m) },
                     shape = SegmentedButtonDefaults.itemShape(i, options.size),
                 ) { Text(m.label) }
             }
