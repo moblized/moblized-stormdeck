@@ -131,6 +131,21 @@ class LiveSourcesTest {
         check("OpenFreeMap positron style") { "${Http.text("https://tiles.openfreemap.org/styles/positron").length} chars" }
         check("CARTO car tiles") { image("https://basemaps.cartocdn.com/dark_nolabels/5/8/12@2x.png") + " / " + image("https://basemaps.cartocdn.com/dark_only_labels/5/8/12@2x.png") }
 
+        // From GitHub's shared servers Open-Meteo sometimes ignores requests for a few minutes before answering
+        // normally; wait for it to wake up so the checks below test the forecast, not that hiccup.
+        check("Open-Meteo reachable") {
+            val t0 = System.currentTimeMillis()
+            var ok = false
+            while (!ok && System.currentTimeMillis() - t0 < 9 * 60_000L) {
+                ok = runCatching { Http.text("https://api.open-meteo.com/v1/forecast?latitude=40.7&longitude=-74&current=temperature_2m") }.isSuccess
+                if (!ok) {
+                    Http.client.connectionPool.evictAll()
+                    kotlinx.coroutines.delay(15_000)
+                }
+            }
+            check(ok) { "no answer for 9 minutes" }
+            "answered after ${(System.currentTimeMillis() - t0) / 1000} s"
+        }
         check("Open-Meteo best match") { OpenMeteo.parse(textRetry(OpenMeteo.url(40.71, -74.0, s))).let { "now ${it.current.temp}°F, ${it.hourly.size} h, ${it.daily.size} d, ${it.minutely.size} x15min, cape ${it.current.cape}, vis ${it.current.visibility}${it.visibilityUnit}" } }
         check("Open-Meteo National Blend (NYC)") {
             val body = textRetry(OpenMeteo.url(40.71, -74.0, s, ForecastModel.Nbm))
