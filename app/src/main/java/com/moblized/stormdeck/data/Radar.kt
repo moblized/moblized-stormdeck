@@ -192,6 +192,28 @@ object Gibs {
         "$WMS?SERVICE=WMS&REQUEST=GetMap&VERSION=1.1.1&LAYERS=$layer&STYLES=&FORMAT=image/png&TRANSPARENT=TRUE" +
             "&SRS=EPSG:3857&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}&TIME=$time"
 
+    /** A small box of open ocean under each satellite, where a real image is never empty. */
+    private fun probeBox(layer: String): String = when {
+        layer.startsWith("GOES-West") -> "-15584728,0,-15028131,557305"
+        layer.startsWith("Himawari") -> "15362092,0,15918689,557305"
+        else -> "-8348961,0,-7792364,557305"
+    }
+
+    /**
+     * The newest time this layer really has. GIBS usually runs 40–70 minutes behind but now and then skips a frame,
+     * and a missing frame comes back as an empty picture, so step back 10 minutes at a time until one has content.
+     */
+    suspend fun newestAvailable(layer: String, mode: SatelliteMode, now: Long = System.currentTimeMillis()): String {
+        val first = if (mode == SatelliteMode.GeoColor) 50 else 40
+        for (lag in first..first + 100 step 10) {
+            val t = latestGeoTime(now, lag)
+            val bytes = runCatching { Http.bytes(wms(layer, t).replace("{bbox-epsg-3857}", probeBox(layer))) }.getOrNull()
+            // An empty (missing) frame is a ~300-byte transparent PNG.
+            if (bytes != null && bytes.size > 1000) return t
+        }
+        return geoTime(mode, now)
+    }
+
     const val SST_ANOMALY = "GHRSST_L4_MUR_Sea_Surface_Temperature_Anomalies"
 
     /** The daily sea-surface temperature analysis lags a day or two. */

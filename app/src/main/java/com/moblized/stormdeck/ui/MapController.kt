@@ -252,13 +252,15 @@ class MapController(
 
     // ---- Other raster overlays ----
 
-    fun setSatellite(mode: SatelliteMode, time: String) {
-        val key = "$mode@$time"
+    /** [times] holds each satellite layer's newest available time, in the order of [Gibs.layers]. */
+    fun setSatellite(mode: SatelliteMode, times: List<String>) {
+        val key = "$mode@$times"
         if (key == satKey) return
         for (i in 0 until satCount) removeRaster("sat-$i")
         satKey = key
         val layers = Gibs.layers(mode)
         layers.forEachIndexed { i, l ->
+            val time = times.getOrNull(i) ?: Gibs.geoTime(mode)
             addRaster("sat-$i", Gibs.wms(l, time), 256, 18f, SAT, if (mode == SatelliteMode.GeoColor) 0.9f else 0.7f, if (i == 0) "Imagery: NASA GIBS / NOAA" else null)
         }
         satCount = layers.size

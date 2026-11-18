@@ -40,11 +40,17 @@ class LiveSourcesTest {
         return "${if (png) "png" else "jpeg"} ${b.size} bytes"
     }
 
-    private suspend fun textRetry(url: String): String = try {
-        Http.text(url)
-    } catch (e: java.io.IOException) {
-        kotlinx.coroutines.delay(2000)
-        Http.text(url)
+    private suspend fun textRetry(url: String): String {
+        var last: Exception? = null
+        repeat(3) { attempt ->
+            try {
+                return Http.text(url)
+            } catch (e: java.io.IOException) {
+                last = e
+                kotlinx.coroutines.delay(5000L * (attempt + 1))
+            }
+        }
+        throw last!!
     }
 
     private fun tile(template: String, z: Int, x: Int, y: Int) =
@@ -61,23 +67,6 @@ class LiveSourcesTest {
         assumeTrue(System.getProperty("live") == "1")
         val s = AppSettings()
 
-        check("Open-Meteo best match") { OpenMeteo.parse(textRetry(OpenMeteo.url(40.71, -74.0, s))).let { "now ${it.current.temp}°F, ${it.hourly.size} h, ${it.daily.size} d, ${it.minutely.size} x15min, cape ${it.current.cape}, vis ${it.current.visibility}${it.visibilityUnit}" } }
-        check("Open-Meteo National Blend (NYC)") {
-            val body = textRetry(OpenMeteo.url(40.71, -74.0, s, ForecastModel.Nbm))
-            val o = org.json.JSONObject(body)
-            val nbmKeys = o.getJSONObject("hourly").keys().asSequence().filter { it.endsWith("_ncep_nbm_conus") }.toList()
-            val f = OpenMeteo.parse(body, ForecastModel.Nbm)
-            val nbmHours = o.getJSONObject("hourly").optJSONArray("temperature_2m_ncep_nbm_conus")?.let { a -> (0 until a.length()).count { !a.isNull(it) } }
-            check(f.modelCoversHere) { "Blend has no current temperature for NYC" }
-            "covers=${f.modelCoversHere}, now ${f.current.temp}, Blend hours $nbmHours of ${f.hourly.size}, Blend vars ${nbmKeys.map { it.removeSuffix("_ncep_nbm_conus") }}, ${f.minutely.size} x15min"
-        }
-        check("Open-Meteo National Blend outside US (London)") {
-            val f = OpenMeteo.parse(textRetry(OpenMeteo.url(51.5, -0.12, s, ForecastModel.Nbm)), ForecastModel.Nbm)
-            "covers=${f.modelCoversHere}, now ${f.current.temp}, ${f.hourly.size} h, ${f.daily.size} d"
-        }
-        for (m in ForecastModel.entries.filter { it != ForecastModel.Best && it != ForecastModel.Nbm }) {
-            check("Open-Meteo ${m.api}") { OpenMeteo.parse(textRetry(OpenMeteo.url(40.71, -74.0, s, m)), m).let { "${it.hourly.size} h, ${it.daily.size} d, now ${it.current.temp}" } }
-        }
         check("Geocoding") { PlaceSearch.search("Tulsa").joinToString { it.name + "/" + it.region }.take(120) }
 
         check("NWS alerts") { "${Nws.alerts(40.71, -74.0).size} active" }
@@ -106,7 +95,7 @@ class LiveSourcesTest {
         }
 
         for ((mode, layer) in Gibs.layers(SatelliteMode.Infrared).map { SatelliteMode.Infrared to it } + Gibs.layers(SatelliteMode.GeoColor).map { SatelliteMode.GeoColor to it }) {
-            val geo = Gibs.geoTime(mode)
+            val geo = runBlocking { Gibs.newestAvailable(layer, mode) }
             val box = when {
                 layer.startsWith("Himawari") -> bboxAsia
                 layer.startsWith("GOES-West") -> bboxWestUs
@@ -140,6 +129,23 @@ class LiveSourcesTest {
         check("OpenFreeMap positron style") { "${Http.text("https://tiles.openfreemap.org/styles/positron").length} chars" }
         check("CARTO car tiles") { image("https://basemaps.cartocdn.com/dark_nolabels/5/8/12@2x.png") + " / " + image("https://basemaps.cartocdn.com/dark_only_labels/5/8/12@2x.png") }
 
+        check("Open-Meteo best match") { OpenMeteo.parse(textRetry(OpenMeteo.url(40.71, -74.0, s))).let { "now ${it.current.temp}°F, ${it.hourly.size} h, ${it.daily.size} d, ${it.minutely.size} x15min, cape ${it.current.cape}, vis ${it.current.visibility}${it.visibilityUnit}" } }
+        check("Open-Meteo National Blend (NYC)") {
+            val body = textRetry(OpenMeteo.url(40.71, -74.0, s, ForecastModel.Nbm))
+            val o = org.json.JSONObject(body)
+            val nbmKeys = o.getJSONObject("hourly").keys().asSequence().filter { it.endsWith("_ncep_nbm_conus") }.toList()
+            val f = OpenMeteo.parse(body, ForecastModel.Nbm)
+            val nbmHours = o.getJSONObject("hourly").optJSONArray("temperature_2m_ncep_nbm_conus")?.let { a -> (0 until a.length()).count { !a.isNull(it) } }
+            check(f.modelCoversHere) { "Blend has no current temperature for NYC" }
+            "covers=${f.modelCoversHere}, now ${f.current.temp}, Blend hours $nbmHours of ${f.hourly.size}, Blend vars ${nbmKeys.map { it.removeSuffix("_ncep_nbm_conus") }}, ${f.minutely.size} x15min"
+        }
+        check("Open-Meteo National Blend outside US (London)") {
+            val f = OpenMeteo.parse(textRetry(OpenMeteo.url(51.5, -0.12, s, ForecastModel.Nbm)), ForecastModel.Nbm)
+            "covers=${f.modelCoversHere}, now ${f.current.temp}, ${f.hourly.size} h, ${f.daily.size} d"
+        }
+        for (m in ForecastModel.entries.filter { it != ForecastModel.Best && it != ForecastModel.Nbm }) {
+            check("Open-Meteo ${m.api}") { OpenMeteo.parse(textRetry(OpenMeteo.url(40.71, -74.0, s, m)), m).let { "${it.hourly.size} h, ${it.daily.size} d, now ${it.current.temp}" } }
+        }
         println("LIVE SUMMARY ${results.count { it.startsWith("LIVE OK") }} ok, ${results.count { it.startsWith("LIVE FAIL") }} failed")
     }
 }
