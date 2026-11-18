@@ -20,24 +20,24 @@ object Http {
 
     val client: OkHttpClient
         get() = _client ?: synchronized(this) {
-            _client ?: OkHttpClient.Builder().build().also { _client = it }
+            _client ?: builder().build().also { _client = it }
+        }
+
+    private fun builder(): OkHttpClient.Builder = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .addInterceptor { chain ->
+            val req = chain.request()
+            val withUa = if (req.header("User-Agent") == null) {
+                req.newBuilder().header("User-Agent", USER_AGENT).build()
+            } else {
+                req
+            }
+            chain.proceed(withUa)
         }
 
     fun init(context: Context) {
-        _client = OkHttpClient.Builder()
-            .cache(Cache(File(context.cacheDir, "http"), 64L * 1024 * 1024))
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .addInterceptor { chain ->
-                val req = chain.request()
-                val withUa = if (req.header("User-Agent") == null) {
-                    req.newBuilder().header("User-Agent", USER_AGENT).build()
-                } else {
-                    req
-                }
-                chain.proceed(withUa)
-            }
-            .build()
+        _client = builder().cache(Cache(File(context.cacheDir, "http"), 64L * 1024 * 1024)).build()
     }
 
     suspend fun text(url: String, accept: String? = null): String = withContext(Dispatchers.IO) {

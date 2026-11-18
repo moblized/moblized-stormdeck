@@ -60,6 +60,8 @@ android {
         unitTests.isIncludeAndroidResources = true
         unitTests.all {
             it.systemProperty("roborazzi.test.record", "true")
+            // -Plive=1 runs LiveSourcesTest against the real weather servers.
+            it.systemProperty("live", (project.findProperty("live") ?: "0").toString())
             it.maxHeapSize = "3g"
             it.testLogging {
                 events("failed")

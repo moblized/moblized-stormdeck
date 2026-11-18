@@ -303,7 +303,7 @@ object Tropics {
             val dir = s.optDouble("movementDir", Double.NaN)
             val speed = s.optDouble("movementSpeed", Double.NaN)
             val movement = if (!dir.isNaN() && !speed.isNaN()) {
-                if (speed < 1) "Stationary" else "${Geo.compass(dir)} at ${speed.toInt()} mph"
+                if (speed < 1) "Stationary" else "${Geo.compass(dir)} ${speed.toInt()} mph"
             } else {
                 null
             }

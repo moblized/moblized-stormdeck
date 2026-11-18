@@ -80,7 +80,7 @@ fun HourlyChart(hours: List<Hour>, offsetSec: Int, modifier: Modifier = Modifier
             typeface = Typeface.DEFAULT_BOLD
         }
         drawIntoCanvas { c ->
-            val every = if (hours.size > 30) 4 else 3
+            val every = if (hours.size > 30) 6 else 3
             hours.forEachIndexed { i, h ->
                 if (i % every == 0) {
                     c.nativeCanvas.drawText("${h.temp.roundToInt()}°", x(i).coerceIn(12f, w - 12f), y(h.temp) - 7.dp.toPx(), bold)

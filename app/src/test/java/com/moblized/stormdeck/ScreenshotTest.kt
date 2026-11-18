@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.background
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -57,7 +58,8 @@ class ScreenshotTest {
     private fun shoot(name: String, dark: Boolean, content: @Composable () -> Unit) {
         compose.setContent {
             StormTheme(dark) {
-                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) { content() }
+                // The app's Scaffold is a Surface; this gives the same text colors.
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { content() }
             }
         }
         compose.waitForIdle()

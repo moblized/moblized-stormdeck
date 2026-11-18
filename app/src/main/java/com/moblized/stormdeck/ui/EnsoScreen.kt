@@ -72,7 +72,7 @@ fun EnsoContent(enso: Remote<Enso>, actions: EnsoActions, contentPadding: Paddin
         item { StatusCard(e) }
         e.latestWeek?.let { w ->
             item {
-                SectionTitle("This week · ${w.date}")
+                SectionTitle("Week of " + w.date.format(java.time.format.DateTimeFormatter.ofPattern("MMM d", java.util.Locale.US)))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Stat("Niño 3.4", Fmt.signed(w.nino34) + "°C", Modifier.weight(1f), "key region")
                     Stat("Niño 1+2", Fmt.signed(w.nino12) + "°C", Modifier.weight(1f), "off Peru")

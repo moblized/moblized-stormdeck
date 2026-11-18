@@ -55,6 +55,14 @@ jobs:
           print(f"::notice title=Unit tests::{msg}")
           PY
 
+      - name: Check live data sources
+        # Runs the app's fetchers against the real weather servers and lists what answered.
+        if: steps.gradle.outcome == 'success'
+        continue-on-error: true
+        run: |
+          ./gradlew --no-daemon testDebugUnitTest --tests '*LiveSourcesTest*' -Plive=1 2>&1 | tee live.log | grep -E "LIVE (OK|FAIL|SUMMARY)" || true
+          grep -E "LIVE (FAIL|SUMMARY)" live.log | sed -E 's/^\s*/::notice title=Data sources::/' || true
+
       - name: Publish UI screenshots
         if: always()
         env:

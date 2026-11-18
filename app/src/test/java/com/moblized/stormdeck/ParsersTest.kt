@@ -98,7 +98,7 @@ class ParsersTest {
         assertEquals("Melissa", m.name)
         assertEquals(120.0, m.windKt, 0.0)
         assertEquals(948, m.pressureMb)
-        assertEquals("WNW at 12 mph", m.movement)
+        assertEquals("WNW 12 mph", m.movement)
         assertEquals(Basin.Atlantic, m.basin)
         assertNotNull(m.nhcCone)
         val merged = Tropics.merge(Tropics.parseGdacsList(Samples.GDACS_LIST), nhc)
