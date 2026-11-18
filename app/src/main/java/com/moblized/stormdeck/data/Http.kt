@@ -49,6 +49,18 @@ object Http {
         }
     }
 
+    /**
+     * Like [text], but if the request fails it drops every pooled connection and tries once more on a fresh one:
+     * a stalled keep-alive connection otherwise makes every retry time out the same way.
+     */
+    suspend fun textFresh(url: String, accept: String? = null): String = try {
+        text(url, accept)
+    } catch (e: IOException) {
+        client.connectionPool.evictAll()
+        kotlinx.coroutines.delay(1000)
+        text(url, accept)
+    }
+
     suspend fun bytes(url: String): ByteArray = withContext(Dispatchers.IO) {
         client.newCall(Request.Builder().url(url).build()).execute().use { r ->
             if (!r.isSuccessful) throw IOException("${hostOf(url)} answered ${r.code}")

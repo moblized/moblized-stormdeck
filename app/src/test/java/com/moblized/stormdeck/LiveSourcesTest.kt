@@ -47,7 +47,9 @@ class LiveSourcesTest {
                 return Http.text(url)
             } catch (e: java.io.IOException) {
                 last = e
-                kotlinx.coroutines.delay(5000L * (attempt + 1))
+                println("LIVE note: attempt ${attempt + 1} for ${url.substringBefore('?')} failed (${e.message}); retrying on a fresh connection")
+                Http.client.connectionPool.evictAll()
+                kotlinx.coroutines.delay(3000L)
             }
         }
         throw last!!

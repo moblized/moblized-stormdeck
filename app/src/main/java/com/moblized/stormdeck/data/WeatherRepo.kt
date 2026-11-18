@@ -10,13 +10,8 @@ object WeatherRepo {
 
     suspend fun forecast(place: Place, s: AppSettings): Forecast {
         val url = OpenMeteo.url(place.lat, place.lon, s)
-        // One retry: the free forecast server is occasionally slow to answer.
-        val body = try {
-            Http.text(url)
-        } catch (e: java.io.IOException) {
-            kotlinx.coroutines.delay(1500)
-            Http.text(url)
-        }
+        // One retry on a fresh connection: the free forecast server occasionally stalls a connection.
+        val body = Http.textFresh(url)
         val f = OpenMeteo.parse(body, s.model)
         Graph.cache.saveForecast(cacheKey(place, s), body, f)
         return f
