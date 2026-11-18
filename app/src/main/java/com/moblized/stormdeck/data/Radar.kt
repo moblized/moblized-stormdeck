@@ -178,11 +178,15 @@ object Gibs {
         SatelliteMode.GeoColor -> listOf("GOES-West_ABI_GeoColor", "GOES-East_ABI_GeoColor")
     }
 
-    /** Geostationary images arrive about 40 minutes late; ask for one that is surely there. */
-    fun latestGeoTime(now: Long = System.currentTimeMillis()): String {
-        val t = (now - 50 * 60_000L) / 600_000L * 600_000L
+    /** Geostationary images arrive 40+ minutes late; ask for one that is surely there. */
+    fun latestGeoTime(now: Long = System.currentTimeMillis(), lagMinutes: Int = 50): String {
+        val t = (now - lagMinutes * 60_000L) / 600_000L * 600_000L
         return isoMinute.format(Instant.ofEpochMilli(t))
     }
+
+    /** Infrared shows up about 50 minutes behind real time; GeoColor takes about an hour. */
+    fun geoTime(mode: SatelliteMode, now: Long = System.currentTimeMillis()): String =
+        latestGeoTime(now, if (mode == SatelliteMode.GeoColor) 70 else 50)
 
     fun wms(layer: String, time: String): String =
         "$WMS?SERVICE=WMS&REQUEST=GetMap&VERSION=1.1.1&LAYERS=$layer&STYLES=&FORMAT=image/png&TRANSPARENT=TRUE" +

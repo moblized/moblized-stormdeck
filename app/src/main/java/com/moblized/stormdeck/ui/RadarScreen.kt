@@ -145,7 +145,7 @@ fun RadarScreen(vm: AppViewModel, dark: Boolean, visible: Boolean, contentPaddin
     // The satellite picture moves on every 10 minutes.
     LaunchedEffect(controller, vm.satellite) {
         while (true) {
-            controller?.setSatellite(vm.satellite, Gibs.latestGeoTime())
+            controller?.setSatellite(vm.satellite, Gibs.geoTime(vm.satellite))
             delay(5 * 60_000L)
         }
     }

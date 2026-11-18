@@ -40,6 +40,13 @@ class LiveSourcesTest {
         return "${if (png) "png" else "jpeg"} ${b.size} bytes"
     }
 
+    private suspend fun textRetry(url: String): String = try {
+        Http.text(url)
+    } catch (e: java.io.IOException) {
+        kotlinx.coroutines.delay(2000)
+        Http.text(url)
+    }
+
     private fun tile(template: String, z: Int, x: Int, y: Int) =
         template.replace("{z}", "$z").replace("{x}", "$x").replace("{y}", "$y")
 
@@ -54,9 +61,9 @@ class LiveSourcesTest {
         assumeTrue(System.getProperty("live") == "1")
         val s = AppSettings()
 
-        check("Open-Meteo best match") { OpenMeteo.parse(Http.text(OpenMeteo.url(40.71, -74.0, s))).let { "now ${it.current.temp}°F, ${it.hourly.size} h, ${it.daily.size} d, ${it.minutely.size} x15min, cape ${it.current.cape}, vis ${it.current.visibility}${it.visibilityUnit}" } }
+        check("Open-Meteo best match") { OpenMeteo.parse(textRetry(OpenMeteo.url(40.71, -74.0, s))).let { "now ${it.current.temp}°F, ${it.hourly.size} h, ${it.daily.size} d, ${it.minutely.size} x15min, cape ${it.current.cape}, vis ${it.current.visibility}${it.visibilityUnit}" } }
         for (m in ForecastModel.entries.filter { it != ForecastModel.Best }) {
-            check("Open-Meteo ${m.api}") { OpenMeteo.parse(Http.text(OpenMeteo.url(40.71, -74.0, s, m)), m).let { "${it.hourly.size} h, ${it.daily.size} d, now ${it.current.temp}" } }
+            check("Open-Meteo ${m.api}") { OpenMeteo.parse(textRetry(OpenMeteo.url(40.71, -74.0, s, m)), m).let { "${it.hourly.size} h, ${it.daily.size} d, now ${it.current.temp}" } }
         }
         check("Geocoding") { PlaceSearch.search("Tulsa").joinToString { it.name + "/" + it.region }.take(120) }
 
@@ -85,25 +92,19 @@ class LiveSourcesTest {
             "products ${prods.map { it.id }}; ${vel.id} ${fs.frames.size} frames; tile " + image(tile(fs.frames.last().url, 7, 30, 47))
         }
 
-        val geo = Gibs.latestGeoTime()
-        for (layer in Gibs.layers(SatelliteMode.Infrared) + Gibs.layers(SatelliteMode.GeoColor)) {
+        for ((mode, layer) in Gibs.layers(SatelliteMode.Infrared).map { SatelliteMode.Infrared to it } + Gibs.layers(SatelliteMode.GeoColor).map { SatelliteMode.GeoColor to it }) {
+            val geo = Gibs.geoTime(mode)
             val box = when {
                 layer.startsWith("Himawari") -> bboxAsia
                 layer.startsWith("GOES-West") -> bboxWestUs
                 else -> bboxUs
             }
-            check("GIBS $layer @$geo") { image(Gibs.wms(layer, geo).replace("{bbox-epsg-3857}", box)) }
-        }
-        // GeoColor: how far behind real time is it, and does it have a night side?
-        for (back in listOf(60, 90, 120, 180, 240, 360, 1080)) {
-            val t = Gibs.latestGeoTime(System.currentTimeMillis() - (back - 50) * 60_000L)
-            check("GeoColor probe -${back}min @$t") {
-                "east " + image(Gibs.wms("GOES-East_ABI_GeoColor", t).replace("{bbox-epsg-3857}", bboxUs)) +
-                    " / atlantic " + image(Gibs.wms("GOES-East_ABI_GeoColor", t).replace("{bbox-epsg-3857}", "-7514065,1252344,-5009377,3757033"))
+            check("GIBS $layer @$geo") {
+                val img = image(Gibs.wms(layer, geo).replace("{bbox-epsg-3857}", box))
+                check(!img.contains(" 334 bytes")) { "blank image: $img" }
+                img
             }
         }
-        check("GeoColor probe no TIME") { image(Gibs.wms("GOES-East_ABI_GeoColor", "x").replace("&TIME=x", "").replace("{bbox-epsg-3857}", bboxUs)) }
-
         check("GIBS SST anomaly map tiles @${Gibs.sstDate()}") { image(Gibs.wms(Gibs.SST_ANOMALY, Gibs.sstDate()).replace("{bbox-epsg-3857}", bboxPacific)) }
         check("GIBS SST anomaly picture") { image(Gibs.sstImage(-180.0, -30.0, -80.0, 30.0, 600, 360)) }
         check("NWS warnings layer") { image(NwsWarningsLayer.url().replace("{bbox-epsg-3857}", bboxUs)) }

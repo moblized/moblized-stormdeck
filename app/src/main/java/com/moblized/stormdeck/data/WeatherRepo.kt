@@ -9,7 +9,14 @@ object WeatherRepo {
         "${place.id}|${"%.3f".format(java.util.Locale.US, place.lat)},${"%.3f".format(java.util.Locale.US, place.lon)}|${s.temp}|${s.wind}|${s.precip}|${s.model}"
 
     suspend fun forecast(place: Place, s: AppSettings): Forecast {
-        val body = Http.text(OpenMeteo.url(place.lat, place.lon, s))
+        val url = OpenMeteo.url(place.lat, place.lon, s)
+        // One retry: the free forecast server is occasionally slow to answer.
+        val body = try {
+            Http.text(url)
+        } catch (e: java.io.IOException) {
+            kotlinx.coroutines.delay(1500)
+            Http.text(url)
+        }
         val f = OpenMeteo.parse(body, s.model)
         Graph.cache.saveForecast(cacheKey(place, s), body, f)
         return f
