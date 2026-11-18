@@ -285,7 +285,13 @@ object OpenMeteo {
                 .filter { !it.precip.isNaN() }
         } ?: emptyList()
 
-        val primaryNow = pri.isEmpty() || !c.num("temperature_2m_" + pri[0]).isNaN()
+        // Does the chosen model itself cover this spot? Open-Meteo's "current" block isn't split by model, so look at
+        // the chosen model's own hourly temperatures around now.
+        val primaryNow = pri.isEmpty() || run {
+            val temps = h.optJSONArray("temperature_2m_" + pri[0])
+            val idx = (0 until ht.length()).minByOrNull { kotlin.math.abs(epoch(ht.getString(it)) - current.time) } ?: 0
+            temps != null && (maxOf(0, idx - 1)..minOf(temps.length() - 1, idx + 1)).any { !temps.isNull(it) }
+        }
         val units = o.optJSONObject("hourly_units")
         return Forecast(
             lat = o.optDouble("latitude"),
